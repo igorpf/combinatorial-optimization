@@ -65,7 +65,7 @@ public class OtimizacaoIT {
         solution.stream().forEach(b->{
             System.out.println(b.toString());
         });
-        List<Bin> newSol = instance.localSearch(solution);
+        List<Bin> newSol = instance.localSearch(solution,20);
         assertTrue(newSol.size()<=solution.size());
         System.out.println("------------\n");
         newSol.stream().forEach(b->{

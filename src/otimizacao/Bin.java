@@ -69,6 +69,8 @@ public class Bin {
             i.getBin().removeItem(i);
             destination.addItem(i);
         }
+        else
+            throw new Exception("Could not change bin!");
         
     }
     @Override
