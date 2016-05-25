@@ -5,11 +5,20 @@
  */
 package otimizacao;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import static java.lang.Math.random;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map.Entry;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -24,54 +33,105 @@ public class Otimizacao {
 
     public Random rand = new Random();
 
-    public float RANDOMNESS = 0.89F;
-    
-    public static int GRASP_ITERATIONS=10;
-    public int SEARCH_ITERATIONS=1000;
+    public static float RANDOMNESS = 1.0F;
+
+    public static int GRASP_ITERATIONS = 10;
+    public static int SEARCH_ITERATIONS = 1000;
 
     public static void main(String[] args) {
-        List<Integer> n = Parser.readFile(args[0]);
+        for (String s : args) {
+            System.out.println(s);
+        }
+//        if (args.length != 5 || args.length != 2) {
+//            System.out.println("Usage: $ java -jar otimizacao.jar <outputFile> <inputFile> <alpha> <graspIterations> <localSearchIterations>");
+//            System.out.println("or: $ java -jar otimizacao.jar <outputFile> <inputFile> ");
+//            return;
+//        }
+        if (args.length == 5) {
+            RANDOMNESS = Float.parseFloat(args[2]);
+            GRASP_ITERATIONS = Integer.parseInt(args[3]);
+            SEARCH_ITERATIONS = Integer.parseInt(args[4]);
+        }
+
+        List<Integer> n = Parser.readFile(args[1]);
+
         Bin.capacity = n.remove(0);
 
         Otimizacao o = new Otimizacao();
+        long startTime = System.nanoTime();
         List<Bin> b = o.GRASP(n, GRASP_ITERATIONS);
-        b.stream().forEach(bin -> {
-            System.out.println(b.toString());
-        });
-        System.out.println("Solution size: " + b.size());
+        long elapsedTime = (System.nanoTime() - startTime) / 1000000;
+        System.out.println("Total execution time: " + elapsedTime + " ms");
+//        b.stream().forEach(bin -> {
+//            System.out.println(b.toString());
+//        });
+        System.out.println("Best solution found size: " + b.size());
+        File f = new File(args[0]);
+        try {
+            f.createNewFile();
+
+            FileWriter fw = new FileWriter(f.getAbsoluteFile());
+            BufferedWriter bw = new BufferedWriter(fw);
+            for (Bin bin : b) {
+                bw.write(bin.toString());
+                bw.newLine();
+            }
+            bw.newLine();
+            bw.write("Best solution size: " + b.size());
+            bw.close();
+
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
     }
 
     /**
      * Generates a solution using the first fit algorithm with the given items
      *
      * @param items
-     * @param randomness must be between [0,1]
+     * @param alpha must be between [0,1]
      * @return list of bins containing the items given
      */
-    public List<Bin> generateSolution(List<Item> items, float randomness) {
+    public List<Bin> generateSolution(List<Item> items, float alpha) {
         List<Bin> solution = new ArrayList<>();
-
         for (Item i : items) {
+            Map<Bin, Float> candidates = new HashMap<>();
             for (Bin b : solution) {
-                try {//nextFloat() is always between [0.0,1.0]
-                    if (rand.nextFloat() < randomness)//skip to next bin
-                    {
-                        continue;
-                    }
-                    b.addItem(i);
-                    break;
-                } catch (Exception ex) {
-
+                int sum = b.getWeightUsed() + i.getWeight();
+                float residue = (1 - sum / (float) Bin.capacity);
+                if (sum <= Bin.capacity) {
+                    candidates.put(b, residue);
                 }
             }
+            //To give more randomness
+//            candidates.put(new Bin(),1.0F);
+            Comparator<Entry<Bin, Float>> valueComparator
+                    = (e1, e2) -> e1.getValue().compareTo(e2.getValue());
+            candidates = candidates
+                    .entrySet()
+                    .stream()
+                    .sorted(valueComparator)
+                    .collect(Collectors.toMap(Entry::getKey, Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
+
+            try {
+                int index = rand.nextInt((int) Math.ceil(candidates.size() * alpha));
+                Bin chosen = (Bin) candidates.keySet().toArray()[index];
+//                System.out.println("Candidates :"+candidates.size()+" chosen: "+(index+1));
+//                for(Bin k:candidates.keySet()){
+//                    System.out.println(candidates.get(k));
+//                }
+                chosen.addItem(i);
+            } catch (Exception ex) {
+            }
+
             if (i.getBin() == null) {
                 Bin b = new Bin();
                 try {
                     b.addItem(i);
                     solution.add(b);
                 } catch (Exception ex) {
-                    Logger.getLogger(Otimizacao.class.getName()).log(Level.SEVERE, null, ex);
                 }
+
             }
         }
         return solution;
@@ -82,7 +142,7 @@ public class Otimizacao {
             return currentSolution;
         }
         List<Bin> newSolution = new ArrayList<>(currentSolution);
-        for (int i = 0;i<iterations;++i) {
+        for (int i = 0; i < iterations; ++i) {
             int fromBinrandIndex = this.rand.nextInt(newSolution.size());
             int toBinrandIndex = this.rand.nextInt(newSolution.size());
             int itemrandIndex = this.rand.
@@ -92,18 +152,20 @@ public class Otimizacao {
                             .size());
             try {
                 Item it = newSolution
-                                 .get(fromBinrandIndex)
-                                 .getItems()
-                                 .get(itemrandIndex);
+                        .get(fromBinrandIndex)
+                        .getItems()
+                        .get(itemrandIndex);
                 Bin previousBin = it.getBin();
-                Bin newBin=currentSolution.get(toBinrandIndex);
+                Bin newBin = currentSolution.get(toBinrandIndex);
                 Bin.changeItemBin(it, newBin);
-                if(previousBin.isEmpty())
+                if (previousBin.isEmpty()) {
                     newSolution.remove(previousBin);
-                if(newSolution.size()<currentSolution.size()||
-                   residualSquareSum(newSolution)
-                           .compareTo(residualSquareSum(currentSolution))>0)
-                    currentSolution=newSolution;
+                }
+                if (newSolution.size() < currentSolution.size()
+                        || residualSquareSum(newSolution)
+                        .compareTo(residualSquareSum(currentSolution)) > 0) {
+                    currentSolution = newSolution;
+                }
             } catch (Exception ex) {
             }
         }
@@ -128,13 +190,16 @@ public class Otimizacao {
         while (iterations-- > 0) {
             List<Item> i = createNewItemInstances(values);
             List<Bin> s = generateSolution(i, this.RANDOMNESS);
-            System.out.print("Iteration "+iterations+" generated solution size: "+s.size());
-            s = localSearch(s,this.SEARCH_ITERATIONS);
+//            s.stream().forEach(a -> {
+//                System.out.println(a.toString());
+//            });
+            System.out.print("Iteration " + iterations + " generated solution size: " + s.size());
+            s = localSearch(s, this.SEARCH_ITERATIONS);
             if (s.size() < bestSolutionSize) {
                 bestSolution = s;
                 bestSolutionSize = s.size();
             }
-            System.out.print(" best solution found size: "+s.size()+"\n");
+            System.out.print(" best solution found size: " + s.size() + "\n");
         }
         return bestSolution;
     }

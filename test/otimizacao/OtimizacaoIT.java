@@ -50,7 +50,7 @@ public class OtimizacaoIT {
   
     @Test
     public void testGenerateSolution() {
-        float randomness = 0.8F;
+        float randomness = 1.0F;
         solution=instance.generateSolution(items, randomness);
         assertTrue(solution.size() >=4);
         solution.stream().forEach(b->{
